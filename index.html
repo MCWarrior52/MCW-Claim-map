@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Minecraft Claim Map</title>
+<style>
+*{box-sizing:border-box}body{margin:0 auto;padding:18px;max-width:1000px;background:#101820;color:#edf4fa;font:16px system-ui}
+.panel{background:#1b2935;border:1px solid #405465;border-radius:14px;padding:14px;margin:14px 0}
+p,.hint{color:#b8c7d3;line-height:1.45}.row{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+input,button{font:inherit;padding:10px;border-radius:9px}input{background:#101820;color:white;border:1px solid #607789;flex:1;min-width:190px}
+button{border:0;background:#287fba;color:white;font-weight:650}button.secondary{background:#4b5d6b}button.danger{background:#a43e48}
+#mapWrap{position:relative;width:100%;min-height:220px;background:#0b1218;border:1px dashed #607789;border-radius:10px;overflow:hidden;touch-action:none}
+#map{display:block;width:100%;height:auto;pointer-events:none}canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.status{color:#9ed4ff;min-height:1.5em;font-weight:650}.claim{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #405465}
+</style></head><body>
+<h1>Minecraft Claim Map</h1><p>Lade deine Weltkarte hoch und markiere dein Gebiet mit Maus oder Finger.</p>
+<section class="panel"><div class="row"><label>Karte: <input id="file" type="file" accept="image/*"></label>
+<button id="undo" class="secondary" disabled>Letzten Punkt zurück</button><button id="finish" disabled>Claim speichern</button><button id="cancel" class="secondary" disabled>Abbrechen</button></div>
+<p class="hint">Am besten einen Screenshot deiner gerenderten Minecraft-Weltkarte verwenden.</p>
+<div id="mapWrap"><img id="map" alt="Deine Karte"><canvas id="overlay"></canvas></div><div id="status" class="status">Bitte zuerst eine Karte hochladen.</div></section>
+<section class="panel"><h2>Gebiet markieren</h2><div class="row"><input id="player" maxlength="32" placeholder="Minecraft-Name"><button id="start" disabled>Markierung starten</button></div><p class="hint">Zeichne mindestens 3 Punkte um dein Gebiet und speichere den Claim.</p></section>
+<section class="panel"><div class="row" style="justify-content:space-between"><h2>Claims</h2><button id="export" class="secondary">Claims exportieren</button></div><div id="claims">Noch keine Claims.</div>
+<p class="hint">Wichtig: Diese Version speichert nur lokal in diesem Browser. Damit alle Spieler dieselben Claims live sehen, brauchen wir später eine gemeinsame Datenbank bzw. einen Server.</p></section>
+<script>
+const $=id=>document.getElementById(id),file=$('file'),map=$('map'),wrap=$('mapWrap'),canvas=$('overlay'),ctx=canvas.getContext('2d');
+let claims=[],points=[],drawing=false,ready=false;
+try{claims=JSON.parse(localStorage.getItem('mc_claims_v1')||'[]')}catch(e){}
+function resize(){let r=wrap.getBoundingClientRect();canvas.width=r.width*devicePixelRatio;canvas.height=r.height*devicePixelRatio;ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);draw()}
+function size(){return [wrap.clientWidth,wrap.clientHeight]}
+function pos(e){let r=canvas.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width,y:(e.clientY-r.top)/r.height}}
+function poly(p,fill,stroke){if(p.length<3)return;let [w,h]=size();ctx.beginPath();ctx.moveTo(p[0].x*w,p[0].y*h);p.slice(1).forEach(q=>ctx.lineTo(q.x*w,q.y*h));ctx.closePath();ctx.fillStyle=fill;ctx.fill();ctx.strokeStyle=stroke;ctx.lineWidth=2;ctx.stroke()}
+function draw(){let [w,h]=size();ctx.clearRect(0,0,w,h);claims.forEach(c=>poly(c.points,'rgba(35,190,130,.28)','#35d39a'));if(points.length){ctx.beginPath();ctx.moveTo(points[0].x*w,points[0].y*h);points.slice(1).forEach(p=>ctx.lineTo(p.x*w,p.y*h));ctx.strokeStyle='#ffd166';ctx.lineWidth=3;ctx.stroke();points.forEach(p=>{ctx.beginPath();ctx.arc(p.x*w,p.y*h,4,0,7);ctx.fillStyle='#ffd166';ctx.fill()})}}
+function render(){let box=$('claims');box.innerHTML='';if(!claims.length){box.textContent='Noch keine Claims.';return}claims.forEach((c,i)=>{let row=document.createElement('div');row.className='claim';let name=document.createElement('span');name.textContent=c.name+' · Claim '+(i+1);let b=document.createElement('button');b.className='danger';b.textContent='Löschen';b.onclick=()=>{claims.splice(i,1);save()};row.append(name,b);box.append(row)})}
+function save(){localStorage.setItem('mc_claims_v1',JSON.stringify(claims));render();draw()}
+file.onchange=()=>{let f=file.files[0];if(!f)return;map.onload=()=>{ready=true;wrap.style.aspectRatio=map.naturalWidth+'/'+map.naturalHeight;resize();$('start').disabled=false;$('status').textContent='Karte geladen. Namen eingeben und Markierung starten.'};map.src=URL.createObjectURL(f)};
+$('start').onclick=()=>{if(!$('player').value.trim()){$('status').textContent='Bitte Minecraft-Namen eingeben.';return}points=[];drawing=true;$('start').disabled=true;$('finish').disabled=$('undo').disabled=$('cancel').disabled=false;$('status').textContent='Zeichne dein Gebiet auf die Karte.';draw()};
+canvas.onpointerdown=e=>{if(!drawing)return;e.preventDefault();canvas.setPointerCapture(e.pointerId);points.push(pos(e));draw()};
+canvas.onpointermove=e=>{if(!drawing||!(e.buttons||e.pressure))return;e.preventDefault();let p=pos(e),last=points[points.length-1];if(!last||Math.hypot(p.x-last.x,p.y-last.y)>.004){points.push(p);draw()}};
+$('undo').onclick=()=>{points.pop();draw()};
+$('cancel').onclick=()=>{drawing=false;points=[];controls();$('status').textContent='Abgebrochen.';draw()};
+function controls(){$('start').disabled=!ready;$('finish').disabled=$('undo').disabled=$('cancel').disabled=true}
+$('finish').onclick=()=>{if(points.length<3){$('status').textContent='Bitte mindestens 3 Punkte markieren.';return}claims.push({name:$('player').value.trim(),points:points.slice()});points=[];drawing=false;controls();$('status').textContent='Claim wurde in diesem Browser gespeichert.';save()};
+$('export').onclick=()=>{let blob=new Blob([JSON.stringify({claims},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='minecraft-claims.json';a.click();URL.revokeObjectURL(a.href)};
+window.addEventListener('resize',resize);render();resize();
+</script></body></html>
